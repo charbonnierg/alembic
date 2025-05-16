@@ -112,12 +112,12 @@ def init(
                 with open(path, "w"):
                     pass
 
-    assert config_file is not None
-    util.msg(
-        "Please edit configuration/connection/logging "
-        f"settings in {config_file!r} before proceeding.",
-        **config.messaging_opts,
-    )
+    if config_file is not None:
+        util.msg(
+            "Please edit configuration/connection/logging "
+            f"settings in {config_file!r} before proceeding.",
+            **config.messaging_opts,
+        )
 
 
 def revision(
