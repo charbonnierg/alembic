@@ -17,6 +17,7 @@ from mako.template import Template
 
 from . import compat
 from .exc import CommandError
+from .exc import ImportFromStringError
 
 
 def template_to_file(
@@ -42,6 +43,12 @@ def template_to_file(
             f.write(output)
 
 
+def detect_resource_string(import_str: str) -> bool:
+    """Names that are non absolute paths and contain a colon
+    are detected as resource strings."""
+    return not os.path.isabs(import_str) and ":" in import_str
+
+
 def coerce_resource_to_filename(fname: str) -> str:
     """Interpret a filename as either a filesystem location or as a package
     resource.
@@ -50,7 +57,7 @@ def coerce_resource_to_filename(fname: str) -> str:
     are interpreted as resources and coerced to a file location.
 
     """
-    if not os.path.isabs(fname) and ":" in fname:
+    if detect_resource_string(fname):
         tokens = fname.split(":")
 
         # from https://importlib-resources.readthedocs.io/en/latest/migration.html#pkg-resources-resource-filename  # noqa E501
@@ -112,3 +119,38 @@ def load_module_py(module_id: str, path: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore
     return module
+
+
+# Taken from uvicorn
+# https://github.com/encode/uvicorn/blob/master/uvicorn/importer.py
+
+
+def load_object_py(import_str: str) -> Any:  # noqa: ANN401
+    """Import an object from a string."""
+    module_str, _, attrs_str = import_str.partition(":")
+    if not module_str or not attrs_str:
+        message = 'Import string "{import_str}" must be '
+        'in format "<module>:<attribute>".'
+        raise ImportFromStringError(message.format(import_str=import_str))
+
+    try:
+        module = importlib.import_module(module_str)
+    except ModuleNotFoundError as exc:
+        if exc.name != module_str:
+            raise exc from None
+        message = 'Could not import module "{module_str}".'
+        raise ImportFromStringError(
+            message.format(module_str=module_str)
+        ) from exc
+
+    instance = module
+    try:
+        for attr_str in attrs_str.split("."):
+            instance = getattr(instance, attr_str)
+    except AttributeError as exc:
+        message = 'Attribute "{attrs_str}" not found in module "{module_str}".'
+        raise ImportFromStringError(
+            message.format(attrs_str=attrs_str, module_str=module_str)
+        ) from exc
+
+    return instance

@@ -23,6 +23,7 @@ from . import __version__
 from . import command
 from . import util
 from .util import compat
+from .util import pyfiles
 
 
 class Config:
@@ -645,13 +646,29 @@ class CommandLine:
             # see http://bugs.python.org/issue9253, argparse
             # behavior changed incompatibly in py3.3
             self.parser.error("too few arguments")
+        # Special case when config is a resource import string
+        if pyfiles.detect_resource_string(options.config):
+            factory = options.config
+            options.config = None
+            cfg = Config(
+                file_=None,
+                ini_section=options.name,
+                cmd_opts=options,
+            )
+            try:
+                func = pyfiles.load_object_py(factory)
+            except util.exc.ImportFromStringError as exc:
+                message = "Invalid config factory. {exc}"
+                self.parser.error(message.format(exc=exc))
+            func(cfg)
+        # Default case
         else:
             cfg = Config(
                 file_=options.config,
                 ini_section=options.name,
                 cmd_opts=options,
             )
-            self.run_cmd(cfg, options)
+        self.run_cmd(cfg, options)
 
 
 def main(
